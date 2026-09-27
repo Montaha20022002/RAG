@@ -1,8 +1,13 @@
 # Base vectorielle générée localement (voir README pour la régénérer)
 chroma_db/
 
-# Données sources et dérivées (volumineuses)
-data/
+# Données sources et dérivées (volumineuses), sauf exceptions ci-dessous
+data/*
+!data/data_finale.csv
+!data/echantillon.csv
+!data/fichiers json/
+data/fichiers json/*
+!data/fichiers json/GROUND_TRUTH_final.json
 
 # Python
 __pycache__/
