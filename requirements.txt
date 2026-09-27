@@ -1,0 +1,7 @@
+pandas
+numpy
+chromadb
+openai
+pydantic
+torch
+transformers
