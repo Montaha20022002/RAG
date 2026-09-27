@@ -5,9 +5,8 @@ Ce projet prépare un corpus de documents Milliman, le recherche avec un pipelin
 ## dossiers
 
 - `code/` : scripts Python, organisés selon les étapes de préparation, d'indexation, de recherche et d'évaluation.
-- `data/` : CSV de documents et de topics, échantillons, résultats d'analyse et fichiers JSON.
-- `data/fichiers json/` : chunks, embeddings, ground truth et résultats des métriques.
-- `chroma_db/` : base ChromaDB locale qui contient les chunks indexés et sert au retrieval et à la génération du ground truth.
+- `data/` : échantillon+ base des données initiale
+- `data/fichiers json/` : ground_truth
 
 ## scripts
 
@@ -31,7 +30,7 @@ Ce projet prépare un corpus de documents Milliman, le recherche avec un pipelin
 5. Générer ou charger le ground truth.
 6. Lancer le retrieval hybride, le reranking LLM et l'évaluation.
 
-## Régénérer `data/` et `chroma_db/`
+## Régénérer les autres fichiers de `data/` et `chroma_db/`
 
 Ces dossiers contiennent des fichiers très volumineux, et ne sont pas versionnés (voir `.gitignore`). Pour les reconstruire après un clone, exécuter dans l'ordre depuis `code/` : `creation_data_finale.py`, `sampling.py`, `chunking.py`, `embeddings.py`, puis `chroma_import.py`. Cela nécessite les CSV sources et un accès à l'API d'embeddings.
 
