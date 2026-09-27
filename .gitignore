@@ -1,0 +1,16 @@
+# Base vectorielle générée localement (voir README pour la régénérer)
+chroma_db/
+
+# Données sources et dérivées (volumineuses)
+data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Environnements virtuels
+.venv/
+venv/
+
+# VS Code
+.vscode/
