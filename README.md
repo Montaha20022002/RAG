@@ -31,11 +31,7 @@ Ce projet prépare un corpus de documents Milliman, le recherche avec un pipelin
 5. Générer ou charger le ground truth.
 6. Lancer le retrieval hybride, le reranking LLM et l'évaluation.
 
-## À vérifier avant exécution
-
-Les chemins configurés dans les scripts ne sont pas tous raccordés automatiquement : `creation_data_finale.py` lit `all_data_filtre_2006.csv`, `sampling.py` écrit `echantillon_stratifie_discipline_topic.csv`, tandis que `chunking.py` lit `echantillon.csv`. Vérifier les fichiers d'entrée/sortie voulus avant d'enchaîner les scripts. De plus, `regrouping.py` lit tous les CSV de `data/`, y compris potentiellement des fichiers produits par d'autres étapes.
-
 ## Régénérer `data/` et `chroma_db/`
 
-Ces dossiers sont volumineux et ne sont pas versionnés (voir `.gitignore`). Pour les reconstruire après un clone, exécuter dans l'ordre depuis `code/` : `creation_data_finale.py`, `sampling.py`, `chunking.py`, `embeddings.py`, puis `chroma_import.py`. Cela nécessite les CSV sources et un accès à l'API d'embeddings.
+Ces dossiers contiennent des fichiers très volumineux, et ne sont pas versionnés (voir `.gitignore`). Pour les reconstruire après un clone, exécuter dans l'ordre depuis `code/` : `creation_data_finale.py`, `sampling.py`, `chunking.py`, `embeddings.py`, puis `chroma_import.py`. Cela nécessite les CSV sources et un accès à l'API d'embeddings.
 

@@ -1,7 +1,7 @@
 # Base vectorielle générée localement (voir README pour la régénérer)
 chroma_db/
 
-# Données sources et dérivées (volumineuses), sauf exceptions ci-dessous
+# Données sources et dérivées , sauf exceptions (Ground truth : qui se trouve dans le dossier fichiers JSON, la base de données finale et l'échantillon)
 data/*
 !data/data_finale.csv
 !data/echantillon.csv
