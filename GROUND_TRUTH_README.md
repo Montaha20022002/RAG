@@ -28,4 +28,4 @@ Le script utilise Azure OpenAI. Variables requises : `AZURE_OPENAI_API_KEY` et `
 Ces labels fournissent un ordre de pertinence utilisable pour évaluer le retrieval ou entraîner un reranker.
 
 ## output
-Le ground truth existant se trouve dans `data/fichiers json/GROUND_TRUTH_final.json` 
+Le ground truth existant se trouve dans `data/fichiers json/GROUND_TRUTH_final.json`

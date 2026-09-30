@@ -4,6 +4,7 @@ import time
 from math import log2
 from pathlib import Path
 import chromadb
+import mlflow
 from openai import OpenAI
 from retrieval import RRF_CANDIDATES, hybrid_retrieval, rerank_documents
 
@@ -16,6 +17,8 @@ K_VALUES = [1, 3, 5, 10]
 # Mettre une année ici pour limiter l'évaluation aux questions liées à cette année.
 PUBLICATION_YEAR = None
 OUTPUT_PATH = ROOT / "data" / "fichiers json" / "groundtruth_topic_retrieval_metrics.json"
+MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+MLFLOW_EXPERIMENT = "RAG Retrieval Evaluation"
 
 client = OpenAI(
     api_key=os.environ["AZURE_OPENAI_API_KEY"],
@@ -38,8 +41,29 @@ def load_ground_truth(path: Path):
     return data
 
 
+def get_retrieval_relevant_ids(item):
+    """Return all chunks that can legitimately support the answer."""
+    relevant_ids = []
+    seen_ids = set()
+    for label in ("necessary_chunk_ids", "relevant_chunk_ids", "redundant_chunk_ids"):
+        for chunk_id in item.get(label, []):
+            normalized_id = str(chunk_id)
+            if normalized_id not in seen_ids:
+                seen_ids.add(normalized_id)
+                relevant_ids.append(normalized_id)
+    return relevant_ids
+
+
+def get_unique_chunk_ids(item):
+    """Use new unique labels while remaining compatible with older ground-truth files."""
+    return [
+        str(chunk_id)
+        for chunk_id in item.get("unique_chunk_ids", item.get("necessary_chunk_ids", []))
+    ]
+
+
 def compute_recall_precision(relevant_ids, retrieved_ids, k):
-    # Compare les k premiers résultats aux chunks nécessaires indiqués dans le ground truth.
+    # Un hit inclut tout chunk pertinent, qu'il soit unique ou overlapping.
     relevant_set = {str(x) for x in relevant_ids}
     retrieved_k = [str(x) for x in retrieved_ids[:k]]
     hits = [x for x in retrieved_k if x in relevant_set]
@@ -49,7 +73,7 @@ def compute_recall_precision(relevant_ids, retrieved_ids, k):
 
 
 def compute_mrr(relevant_ids, retrieved_ids):
-    # Mesure la position du premier chunk nécessaire retrouvé dans le classement.
+    # Mesure la position du premier chunk pertinent retrouvé dans le classement.
     relevant_set = {str(x) for x in relevant_ids}
     for rank, item in enumerate(retrieved_ids, start=1):
         if str(item) in relevant_set:
@@ -58,7 +82,7 @@ def compute_mrr(relevant_ids, retrieved_ids):
 
 
 def compute_ndcg(relevant_ids, retrieved_ids, k):
-    # Récompense les chunks nécessaires placés tôt dans les k premiers résultats.
+    # Récompense les chunks pertinents placés tôt dans les k premiers résultats.
     relevant_set = {str(x) for x in relevant_ids}
     dcg = 0.0
     for idx, item in enumerate(retrieved_ids[:k], start=1):
@@ -74,11 +98,11 @@ def compute_ndcg(relevant_ids, retrieved_ids, k):
 
 
 def get_question_metadata(collection, records):
-    # Récupère la discipline et l'année des chunks nécessaires pour chaque question.
+    # Récupère la discipline et l'année des chunks portant une information unique.
     chunk_ids = sorted({
         str(chunk_id)
         for item in records
-        for chunk_id in item.get("necessary_chunk_ids", [])
+        for chunk_id in get_unique_chunk_ids(item)
     })
     chunk_data = collection.get(ids=chunk_ids, include=["metadatas"])
     chunk_metadata = {
@@ -91,12 +115,12 @@ def get_question_metadata(collection, records):
     for index, item in enumerate(records):
         disciplines = {
             str(chunk_metadata[chunk_id].get("discipline_base")).strip()
-            for chunk_id in (str(x) for x in item.get("necessary_chunk_ids", []))
+            for chunk_id in get_unique_chunk_ids(item)
             if chunk_id in chunk_metadata and chunk_metadata[chunk_id].get("discipline_base")
         }
         years = {
             int(chunk_metadata[chunk_id]["year"])
-            for chunk_id in (str(x) for x in item.get("necessary_chunk_ids", []))
+            for chunk_id in get_unique_chunk_ids(item)
             if chunk_id in chunk_metadata and chunk_metadata[chunk_id].get("year") is not None
         }
         question_metadata[index] = {
@@ -140,7 +164,8 @@ def evaluate_questions(collection, records, question_metadata):
         question = str(item.get("question", "")).strip()
         topic = item.get("topic")
         difficulty = item.get("difficulty")
-        relevant_ids = [str(x) for x in item.get("necessary_chunk_ids", [])]
+        unique_ids = get_unique_chunk_ids(item)
+        relevant_ids = get_retrieval_relevant_ids(item)
         discipline = question_metadata[index]["discipline"]
         publication_years = question_metadata[index]["years"]
         # Ignore les questions hors filtre, vides ou sans chunk de référence.
@@ -148,7 +173,7 @@ def evaluate_questions(collection, records, question_metadata):
             continue
         if not question:
             continue
-        if not relevant_ids:
+        if not unique_ids or not relevant_ids:
             continue
 
         evaluated += 1
@@ -186,7 +211,8 @@ def evaluate_questions(collection, records, question_metadata):
             "discipline": discipline,
             "publication_years": sorted(publication_years),
             "difficulty": difficulty,
-            "necessary_chunk_ids": relevant_ids,
+            "unique_chunk_ids": unique_ids,
+            "retrieval_relevant_chunk_ids": relevant_ids,
             "retrieved_ids": retrieved_ids,
             "latency_seconds": total_latency,
             "embedding_latency_seconds": embedding_latency,
@@ -260,14 +286,36 @@ def evaluate_questions(collection, records, question_metadata):
 
 
 def main():
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+
     collection = chromadb.PersistentClient(path=str(CHROMA_PATH)).get_collection(COLLECTION_NAME)
     records = load_ground_truth(GROUND_TRUTH_PATH)
     question_metadata = get_question_metadata(collection, records)
-    results = evaluate_questions(collection, records, question_metadata)
 
-    # Enregistre le résumé global et les résultats détaillés de chaque question.
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+    with mlflow.start_run(run_name="hybrid-retrieval-gpt4o-rerank"):
+        mlflow.log_params(
+            {
+                "collection": COLLECTION_NAME,
+                "embedding_model": "text-embedding-3-large",
+                "rerank_model": "gpt-4o",
+                "rrf_candidates": RRF_CANDIDATES,
+                "n_results": N_RESULTS,
+                "k_values": ",".join(map(str, K_VALUES)),
+                "publication_year": PUBLICATION_YEAR or "all",
+            }
+        )
+
+        results = evaluate_questions(collection, records, question_metadata)
+
+        # Enregistre le résumé global et les résultats détaillés de chaque question.
+        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+
+        mlflow.log_param("num_questions", results["num_questions"])
+        mlflow.log_metrics(
+            {name: float(value) for name, value in results["metrics"].items()}
+        )
 
     print(f"Année de publication filtrée : {PUBLICATION_YEAR or 'toutes'}")
     print(f"Résultats exportés dans : {OUTPUT_PATH}")
